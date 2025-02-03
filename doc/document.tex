@@ -1,5 +1,8 @@
 \documentclass[12pt,a4paper,openany,oneside]{book}
 
+\usepackage[a4paper,margin=2cm]{geometry}
+
+
 \usepackage{hyperref}
 \usepackage[english]{babel}
 \usepackage{amsfonts}
@@ -9,34 +12,34 @@
 \usepackage[font=small,labelfont=bf,tableposition=top]{caption}
 
 \usepackage{listings}
-  \usepackage{courier}
- \lstset{
-         language=C++,
-         basicstyle=\footnotesize\ttfamily,
-         numbers=left,
-         numberstyle=\tiny,
-         numbersep=5pt,
-         tabsize=5,
-         extendedchars=true,
-         breaklines=true,
-         keywordstyle=\textbf,
-         stringstyle=\color{white}\ttfamily,
-         showspaces=false,
-         showtabs=false,
-         xleftmargin=17pt,
-         framexleftmargin=17pt,
-         framexrightmargin=5pt,
-         framexbottommargin=4pt,
-         showstringspaces=false
+\usepackage{courier}
+\lstset{
+       language=C++,
+       basicstyle=\footnotesize\ttfamily,
+       numbers=left,
+       numberstyle=\tiny,
+       numbersep=5pt,
+       tabsize=5,
+       extendedchars=true,
+       breaklines=true,
+       keywordstyle=\textbf,
+       stringstyle=\color{white}\ttfamily,
+       showspaces=false,
+       showtabs=false,
+       xleftmargin=17pt,
+       framexleftmargin=17pt,
+       framexrightmargin=5pt,
+       framexbottommargin=4pt,
+       showstringspaces=false,
+       escapeinside={(*@}{@*)}
  }
 
- \addto\captionsitalian{ 	\renewcommand{\lstlistingname}{Codice}}
+ \addto\captionsenglish{ \renewcommand{\lstlistingname}{Algorithm}}
 
 \setcounter{tocdepth}{3} \setcounter{secnumdepth}{3}
 
+\usepackage{tikz}
 \usepackage{amsmath}
-
-
 \usepackage{framed}
 
 \begin{document}

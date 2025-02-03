@@ -34,7 +34,7 @@ class Graph:
     Tt returns the total weight of the vertices in the vertex cover plus a penalty
     for each uncovered edge.
     '''
-    def getVertexCoverFitness(self, vertexCover, penalty):
+    def getVertexCoverFitness(self, vertexCover, penalty = 0):
         total_weight = 0
 
         assert len(vertexCover) == self.n
@@ -152,7 +152,9 @@ class MinimumWeightVertexCover:
         print("\tBest individual is %s, %s (%s)" % (best_ind, best_ind.fitness.values, "CORRECT!" if is_best_correct else "WRONG!"))
         return {
             "generations": generations,
-            "isBestCorrect": is_best_correct
+            "best": best_ind,
+            "is_best_correct": is_best_correct,
+            "objective": self.graph.getVertexCoverFitness(best_ind)
         }
 
 
