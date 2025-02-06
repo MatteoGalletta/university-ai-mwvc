@@ -1,0 +1,4 @@
+deap==1.4.2
+joblib==1.4.2
+matplotlib==3.10.0
+pandas==2.2.3
