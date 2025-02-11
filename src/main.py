@@ -100,10 +100,12 @@ class MinimumWeightVertexCover:
             pop[:] = offspring
 
             fits = [ind.fitness.values[0] for ind in pop]
+            best_ind = min(pop, key=lambda ind: ind.fitness.values[0])
 
+            
             generations.append({
-                "best": min(fits),
-                "objective": min([self.graph.getVertexCoverFitness(ind) for ind in pop]),
+                "best": best_ind.fitness.values[0],
+                "objective": self.graph.getVertexCoverFitness(best_ind),
                 "avg": np.mean(fits),
                 "evals": min(self.evalCount, EVAL_LIMIT)
             })
@@ -117,7 +119,7 @@ class MinimumWeightVertexCover:
         #print("\tBest individual is %s, %s (%s)" % (best_ind, best_ind.fitness.values, "CORRECT!" if is_best_correct else "WRONG!"))
         return {
             "generations": generations,
-            "best": best_ind,
+            "best": best_ind.fitness.values[0],
             "is_best_correct": is_best_correct,
             "objective": self.graph.getVertexCoverFitness(best_ind)
         }
@@ -163,9 +165,9 @@ def main():
     #import shutil
     #shutil.rmtree('../results', ignore_errors=True)
 
-    TEST_ITERATION = 1
+    TEST_ITERATION = "2/1000"
     META_PARAMETERS = {
-        "POPULATION_SIZE": 100,
+        "POPULATION_SIZE": 1000,
         "CXPB": 0.5,
         "MUTPB": 0.2,
         "K_TOURNAMENT": 3,
