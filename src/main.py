@@ -165,13 +165,34 @@ def main():
     #import shutil
     #shutil.rmtree('../results', ignore_errors=True)
 
+    def stopping_criteria(graph, generations):
+        if 'same_obj_count' not in graph.__dict__:
+            graph.same_obj_count = 0
+        
+        if 'last_obj' not in graph.__dict__:
+            graph.last_obj = None
+        
+        cur_obj = generations[-1]['objective']
+        if graph.last_obj == cur_obj:
+            graph.same_obj_count += 1
+        else:
+            graph.same_obj_count = 0
+
+        # print("\tSame obj count: ", graph.same_obj_count)
+        # print("\tCurrent obj: ", cur_obj)
+        if graph.same_obj_count >= 100:
+            return 0
+        
+        graph.last_obj = cur_obj
+        return len(generations) + 1
+
     TEST_ITERATION = os.environ.get("TEST_ITERATION", 3)
     META_PARAMETERS = {
         "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 150)),
         "CXPB": float(os.environ.get("CXPB", 0.4)),
         "MUTPB": float(os.environ.get("MUTPB", 0.25)),
-        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 3)),
-        "NUMBER_OF_GENERATIONS": lambda graph, generations: 1_000_000
+        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 2)),
+        "NUMBER_OF_GENERATIONS": stopping_criteria
     }
 
     from joblib import Parallel, delayed
