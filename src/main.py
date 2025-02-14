@@ -165,12 +165,12 @@ def main():
     #import shutil
     #shutil.rmtree('../results', ignore_errors=True)
 
-    TEST_ITERATION = "2/1000"
+    TEST_ITERATION = os.environ.get("TEST_ITERATION", 3)
     META_PARAMETERS = {
-        "POPULATION_SIZE": 1000,
-        "CXPB": 0.5,
-        "MUTPB": 0.2,
-        "K_TOURNAMENT": 3,
+        "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 150)),
+        "CXPB": float(os.environ.get("CXPB", 0.4)),
+        "MUTPB": float(os.environ.get("MUTPB", 0.25)),
+        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 3)),
         "NUMBER_OF_GENERATIONS": lambda graph, generations: 1_000_000
     }
 
