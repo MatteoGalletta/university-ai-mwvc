@@ -56,10 +56,11 @@ class MinimumWeightVertexCover:
         fitnesses = list(map(self.toolbox.evaluate, pop))
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
+            ind.is_valid = self.graph.isVertexCover(ind)
 
         #print("  Evaluated %i individuals" % len(pop))
 
-        fits = [ind.fitness.values[0] for ind in pop]
+        fits = [(ind.fitness.values[0], ind.is_valid) for ind in pop]
 
         g = 0
 
@@ -94,19 +95,34 @@ class MinimumWeightVertexCover:
 
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+                ind.is_valid = self.graph.isVertexCover(ind)
 
             #print("  Evaluated %i individuals" % len(invalid_ind))
 
             pop[:] = offspring
 
-            fits = [ind.fitness.values[0] for ind in pop]
-            best_ind = min(pop, key=lambda ind: ind.fitness.values[0])
+            fits = [(ind.fitness.values[0], ind.is_valid) for ind in pop]
+            valid_pop = list(filter(lambda ind: ind.is_valid, pop))
+            if len(valid_pop) == 0:
+                # no best
+                print("ATTENZIONE! LA GENERAZIONE NON HA NESSUN BEST")
+                generations.append({
+                    "best": None,
+                    "objective": None,
+                    "avg": np.mean([f[0] for f in fits]),
+                    "evals": min(self.evalCount, EVAL_LIMIT)
+                })
+                continue
+            best_ind = min(valid_pop, key=lambda ind: ind.fitness.values[0])
 
-            
+            best_ind_obj = self.graph.getVertexCoverFitness(best_ind)
+            assert best_ind.fitness.values[0] == best_ind_obj
+            assert best_ind.is_valid
+
             generations.append({
                 "best": best_ind.fitness.values[0],
-                "objective": self.graph.getVertexCoverFitness(best_ind),
-                "avg": np.mean(fits),
+                "objective": best_ind_obj,
+                "avg": np.mean([f[0] for f in fits]),
                 "evals": min(self.evalCount, EVAL_LIMIT)
             })
             #print("\tbest:", generations[-1]['best'], ", evals:", generations[-1]['evals'])
@@ -186,7 +202,7 @@ def main():
         graph.last_obj = cur_obj
         return len(generations) + 1
 
-    TEST_ITERATION = os.environ.get("TEST_ITERATION", 3)
+    TEST_ITERATION = os.environ.get("TEST_ITERATION", 6)
     META_PARAMETERS = {
         "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 150)),
         "CXPB": float(os.environ.get("CXPB", 0.4)),
@@ -198,7 +214,90 @@ def main():
     from joblib import Parallel, delayed
     def process(graph_raw):
         file_name, graph = graph_raw
-        print("Graph: ", file_name)
+        
+        def get_minimum_weight(graph, weights):
+            """
+            Computes the optimal (exact) minimum weight set cover.
+            
+            Each key in `graph` corresponds to a set, where the effective set is defined
+            as graph[i] ∪ {i}. The algorithm returns the optimal collection of keys (sets)
+            that covers the entire universe (all keys and all elements in the sets) with
+            minimum total weight.
+            
+            Parameters:
+                graph (dict): Keys are set indices; values are sets of elements the set covers.
+                weights (list): A list of weights corresponding to each set (indexed by the keys).
+                
+            Returns:
+                selected_sets (list): A list of keys (sets) that form the optimal cover.
+                total_weight (number): The total weight of the selected sets.
+                
+            Note:
+                This implementation uses an exponential dynamic programming approach with
+                bitmasking and is suitable only for small instances.
+            """
+            # Build the universe of elements to be covered.
+            universe = set()
+            for key, covered in graph.items():
+                universe.add(key)
+                universe.update(covered)
+            universe = sorted(universe)  # Sort for consistency.
+            element_to_index = {elem: idx for idx, elem in enumerate(universe)}
+            n = len(universe)
+            
+            # Precompute the bitmask for each set.
+            # (We treat the effective set as graph[i] ∪ {i}).
+            set_bitmasks = {}
+            for key, covered in graph.items():
+                effective_set = set(covered)
+                effective_set.add(key)
+                mask = 0
+                for e in effective_set:
+                    mask |= 1 << element_to_index[e]
+                set_bitmasks[key] = mask
+            
+            # full_mask represents all elements in the universe being uncovered.
+            full_mask = (1 << n) - 1
+
+            from functools import lru_cache
+
+            @lru_cache(maxsize=None)
+            def dp(remaining):
+                """
+                Returns a tuple (min_weight, chosen_sets) for covering the 'remaining' uncovered elements.
+                'remaining' is represented as a bitmask.
+                """
+                if remaining == 0:
+                    return (0, ())  # No weight needed if nothing is uncovered.
+                
+                best = (float('inf'), None)
+                # Try choosing each set that covers at least one uncovered element.
+                for key, mask in set_bitmasks.items():
+                    new_remaining = remaining & ~mask
+                    if new_remaining == remaining:
+                        continue  # This set doesn't cover any new element.
+                    candidate_weight, candidate_sets = dp(new_remaining)
+                    total_weight = weights[key] + candidate_weight
+                    if total_weight < best[0]:
+                        best = (total_weight, (key,) + candidate_sets)
+                return best
+
+            total_weight, chosen_sets = dp(full_mask)
+            return list(chosen_sets), total_weight
+        
+        print("Starting to process", file_name, "...")
+        minimum_weight = None
+        if get_problem_class(graph.n) in ["SPI", "MPI"]:
+            minimum_weight = get_minimum_weight(graph.graph, graph.weights)[1]
+        performanceMetrics = MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        print("Finished to process", file_name, "| min:", minimum_weight, "| got:", performanceMetrics['objective'], "which is", performanceMetrics['is_best_correct'])
+        if minimum_weight is not None and minimum_weight > performanceMetrics['objective']:
+            print("ERRORE")
+
+        #performanceMetrics = None
+        #if get_problem_class(graph.n) == "LPI":
+        performanceMetrics = None#MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        
         return {
             "fileName": file_name,
             "graph": {
@@ -209,7 +308,7 @@ def main():
             "problemClass": get_problem_class(graph.n),
             "testInstanceName": file_name.split("_")[2],
             "testInstanceVersion": file_name.split("_")[3],
-            "performanceMetrics": MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+            "performanceMetrics": performanceMetrics
         }
     
     # READ GRAPHS
