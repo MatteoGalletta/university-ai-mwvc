@@ -1,5 +1,4 @@
-import random, os, json, numpy as np
-import inspect
+import random, os, json, inspect, math, numpy as np
 from deap import base, creator, tools
 from graph import Graph
 
@@ -36,7 +35,7 @@ class MinimumWeightVertexCover:
                 #if self.evalCount == EVAL_LIMIT:
                 #    print("\tEVAL_LIMIT reached!")
                 return self.max_weight * self.graph.n + 1, # guarantee to be the worst
-            return graph.getVertexCoverFitness(individual, self.max_weight),
+            return graph.getVertexCoverFitness(individual, self.max_weight * self.graph.n),
 
         self.toolbox.register("evaluate", evalMWVC)
         self.toolbox.register("mate", tools.cxOnePoint)
@@ -53,10 +52,20 @@ class MinimumWeightVertexCover:
 
         #print("\tStart of evolution")
 
+        #if self.graph.n == 800:
+        #    print("Repairing individuals...")
+        
+        for ind in pop:
+            self.graph.repair_individual(ind)
+
+        #if self.graph.n == 800:
+        #    print("Calculating fitnesses...")
         fitnesses = list(map(self.toolbox.evaluate, pop))
+        #if self.graph.n == 800:
+        #    print("Fitness calculated.")
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
-            ind.is_valid = self.graph.isVertexCover(ind)
+            ind.is_valid = True
 
         #print("  Evaluated %i individuals" % len(pop))
 
@@ -64,11 +73,14 @@ class MinimumWeightVertexCover:
 
         g = 0
 
+        global_valid_best_obj = None
+
         generations = []
         while self.evalCount < EVAL_LIMIT:
             
             g = g + 1
-            #print("-- Generation %i --" % g)
+            #if self.graph.n == 800:
+            #    print("-- Generation %i --" % g)
 
             offspring = tools.selTournament(pop, len(pop), tournsize=K_TOURNAMENT)
             offspring = list(map(self.toolbox.clone, offspring))
@@ -88,6 +100,9 @@ class MinimumWeightVertexCover:
                     del mutant.fitness.values
 
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            #for ind in invalid_ind:
+                #self.graph.repair_individual(ind)
+
             fitnesses = map(self.toolbox.evaluate, invalid_ind)
 
             if self.evalCount >= EVAL_LIMIT:
@@ -105,7 +120,7 @@ class MinimumWeightVertexCover:
             valid_pop = list(filter(lambda ind: ind.is_valid, pop))
             if len(valid_pop) == 0:
                 # no best
-                print("ATTENZIONE! LA GENERAZIONE NON HA NESSUN BEST")
+                #print("ATTENZIONE! LA GENERAZIONE NON HA NESSUN BEST")
                 generations.append({
                     "best": None,
                     "objective": None,
@@ -116,6 +131,10 @@ class MinimumWeightVertexCover:
             best_ind = min(valid_pop, key=lambda ind: ind.fitness.values[0])
 
             best_ind_obj = self.graph.getVertexCoverFitness(best_ind)
+
+            if global_valid_best_obj is None or best_ind_obj < global_valid_best_obj:
+                global_valid_best_obj = best_ind_obj
+            
             assert best_ind.fitness.values[0] == best_ind_obj
             assert best_ind.is_valid
 
@@ -130,14 +149,10 @@ class MinimumWeightVertexCover:
             if FUN_NUMBER_OF_GENERATIONS(self.graph, generations) <= g:
                 break
 
-        best_ind = tools.selBest(pop, 1)[0]
-        is_best_correct = self.graph.isVertexCover(best_ind)
-        #print("\tBest individual is %s, %s (%s)" % (best_ind, best_ind.fitness.values, "CORRECT!" if is_best_correct else "WRONG!"))
+        #print(f"\tBest individual weights {global_valid_best_obj}")
         return {
             "generations": generations,
-            "best": best_ind.fitness.values[0],
-            "is_best_correct": is_best_correct,
-            "objective": self.graph.getVertexCoverFitness(best_ind)
+            "best_objective": global_valid_best_obj
         }
 
 
@@ -196,18 +211,20 @@ def main():
 
         # print("\tSame obj count: ", graph.same_obj_count)
         # print("\tCurrent obj: ", cur_obj)
-        if graph.same_obj_count >= 100:
+        if graph.same_obj_count >= 40:
             return 0
         
         graph.last_obj = cur_obj
         return len(generations) + 1
+    #def stopping_criteria(graph, generations):
+    #    return 1_000_000
 
-    TEST_ITERATION = os.environ.get("TEST_ITERATION", 6)
+    TEST_ITERATION = os.environ.get("TEST_ITERATION", 1)
     META_PARAMETERS = {
-        "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 150)),
-        "CXPB": float(os.environ.get("CXPB", 0.4)),
-        "MUTPB": float(os.environ.get("MUTPB", 0.25)),
-        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 2)),
+        "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 400)),
+        "CXPB": float(os.environ.get("CXPB", 0.5)),
+        "MUTPB": float(os.environ.get("MUTPB", 0.2)),
+        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 3)),
         "NUMBER_OF_GENERATIONS": stopping_criteria
     }
 
@@ -215,89 +232,13 @@ def main():
     def process(graph_raw):
         file_name, graph = graph_raw
         
-        def get_minimum_weight(graph, weights):
-            """
-            Computes the optimal (exact) minimum weight set cover.
-            
-            Each key in `graph` corresponds to a set, where the effective set is defined
-            as graph[i] ∪ {i}. The algorithm returns the optimal collection of keys (sets)
-            that covers the entire universe (all keys and all elements in the sets) with
-            minimum total weight.
-            
-            Parameters:
-                graph (dict): Keys are set indices; values are sets of elements the set covers.
-                weights (list): A list of weights corresponding to each set (indexed by the keys).
-                
-            Returns:
-                selected_sets (list): A list of keys (sets) that form the optimal cover.
-                total_weight (number): The total weight of the selected sets.
-                
-            Note:
-                This implementation uses an exponential dynamic programming approach with
-                bitmasking and is suitable only for small instances.
-            """
-            # Build the universe of elements to be covered.
-            universe = set()
-            for key, covered in graph.items():
-                universe.add(key)
-                universe.update(covered)
-            universe = sorted(universe)  # Sort for consistency.
-            element_to_index = {elem: idx for idx, elem in enumerate(universe)}
-            n = len(universe)
-            
-            # Precompute the bitmask for each set.
-            # (We treat the effective set as graph[i] ∪ {i}).
-            set_bitmasks = {}
-            for key, covered in graph.items():
-                effective_set = set(covered)
-                effective_set.add(key)
-                mask = 0
-                for e in effective_set:
-                    mask |= 1 << element_to_index[e]
-                set_bitmasks[key] = mask
-            
-            # full_mask represents all elements in the universe being uncovered.
-            full_mask = (1 << n) - 1
-
-            from functools import lru_cache
-
-            @lru_cache(maxsize=None)
-            def dp(remaining):
-                """
-                Returns a tuple (min_weight, chosen_sets) for covering the 'remaining' uncovered elements.
-                'remaining' is represented as a bitmask.
-                """
-                if remaining == 0:
-                    return (0, ())  # No weight needed if nothing is uncovered.
-                
-                best = (float('inf'), None)
-                # Try choosing each set that covers at least one uncovered element.
-                for key, mask in set_bitmasks.items():
-                    new_remaining = remaining & ~mask
-                    if new_remaining == remaining:
-                        continue  # This set doesn't cover any new element.
-                    candidate_weight, candidate_sets = dp(new_remaining)
-                    total_weight = weights[key] + candidate_weight
-                    if total_weight < best[0]:
-                        best = (total_weight, (key,) + candidate_sets)
-                return best
-
-            total_weight, chosen_sets = dp(full_mask)
-            return list(chosen_sets), total_weight
-        
         print("Starting to process", file_name, "...")
-        minimum_weight = None
-        if get_problem_class(graph.n) in ["SPI", "MPI"]:
-            minimum_weight = get_minimum_weight(graph.graph, graph.weights)[1]
-        performanceMetrics = MinimumWeightVertexCover(graph).run(META_PARAMETERS)
-        print("Finished to process", file_name, "| min:", minimum_weight, "| got:", performanceMetrics['objective'], "which is", performanceMetrics['is_best_correct'])
-        if minimum_weight is not None and minimum_weight > performanceMetrics['objective']:
-            print("ERRORE")
+        if graph.n < 0: # 200
+            performanceMetrics = { 'best_objective': None }#MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        else:
+            performanceMetrics = MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        print("Finished to process", file_name, "- best:", performanceMetrics['best_objective'])
 
-        #performanceMetrics = None
-        #if get_problem_class(graph.n) == "LPI":
-        performanceMetrics = None#MinimumWeightVertexCover(graph).run(META_PARAMETERS)
-        
         return {
             "fileName": file_name,
             "graph": {
