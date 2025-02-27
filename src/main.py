@@ -1,5 +1,4 @@
-import random, os, json, numpy as np
-import inspect
+import random, os, json, inspect, math, numpy as np
 from deap import base, creator, tools
 from graph import Graph
 
@@ -36,7 +35,7 @@ class MinimumWeightVertexCover:
                 #if self.evalCount == EVAL_LIMIT:
                 #    print("\tEVAL_LIMIT reached!")
                 return self.max_weight * self.graph.n + 1, # guarantee to be the worst
-            return graph.getVertexCoverFitness(individual, self.max_weight),
+            return graph.getVertexCoverFitness(individual, self.max_weight * self.graph.n),
 
         self.toolbox.register("evaluate", evalMWVC)
         self.toolbox.register("mate", tools.cxOnePoint)
@@ -53,21 +52,35 @@ class MinimumWeightVertexCover:
 
         #print("\tStart of evolution")
 
+        #if self.graph.n == 800:
+        #    print("Repairing individuals...")
+        
+        for ind in pop:
+            self.graph.repair_individual(ind)
+
+        #if self.graph.n == 800:
+        #    print("Calculating fitnesses...")
         fitnesses = list(map(self.toolbox.evaluate, pop))
+        #if self.graph.n == 800:
+        #    print("Fitness calculated.")
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
+            ind.is_valid = True
 
         #print("  Evaluated %i individuals" % len(pop))
 
-        fits = [ind.fitness.values[0] for ind in pop]
+        fits = [(ind.fitness.values[0], ind.is_valid) for ind in pop]
 
         g = 0
+
+        global_valid_best_obj = None
 
         generations = []
         while self.evalCount < EVAL_LIMIT:
             
             g = g + 1
-            #print("-- Generation %i --" % g)
+            #if self.graph.n == 800:
+            #    print("-- Generation %i --" % g)
 
             offspring = tools.selTournament(pop, len(pop), tournsize=K_TOURNAMENT)
             offspring = list(map(self.toolbox.clone, offspring))
@@ -87,6 +100,9 @@ class MinimumWeightVertexCover:
                     del mutant.fitness.values
 
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            #for ind in invalid_ind:
+                #self.graph.repair_individual(ind)
+
             fitnesses = map(self.toolbox.evaluate, invalid_ind)
 
             if self.evalCount >= EVAL_LIMIT:
@@ -94,19 +110,38 @@ class MinimumWeightVertexCover:
 
             for ind, fit in zip(invalid_ind, fitnesses):
                 ind.fitness.values = fit
+                ind.is_valid = self.graph.isVertexCover(ind)
 
             #print("  Evaluated %i individuals" % len(invalid_ind))
 
             pop[:] = offspring
 
-            fits = [ind.fitness.values[0] for ind in pop]
-            best_ind = min(pop, key=lambda ind: ind.fitness.values[0])
+            fits = [(ind.fitness.values[0], ind.is_valid) for ind in pop]
+            valid_pop = list(filter(lambda ind: ind.is_valid, pop))
+            if len(valid_pop) == 0:
+                # no best
+                #print("ATTENZIONE! LA GENERAZIONE NON HA NESSUN BEST")
+                generations.append({
+                    "best": None,
+                    "objective": None,
+                    "avg": np.mean([f[0] for f in fits]),
+                    "evals": min(self.evalCount, EVAL_LIMIT)
+                })
+                continue
+            best_ind = min(valid_pop, key=lambda ind: ind.fitness.values[0])
 
+            best_ind_obj = self.graph.getVertexCoverFitness(best_ind)
+
+            if global_valid_best_obj is None or best_ind_obj < global_valid_best_obj:
+                global_valid_best_obj = best_ind_obj
             
+            assert best_ind.fitness.values[0] == best_ind_obj
+            assert best_ind.is_valid
+
             generations.append({
                 "best": best_ind.fitness.values[0],
-                "objective": self.graph.getVertexCoverFitness(best_ind),
-                "avg": np.mean(fits),
+                "objective": best_ind_obj,
+                "avg": np.mean([f[0] for f in fits]),
                 "evals": min(self.evalCount, EVAL_LIMIT)
             })
             #print("\tbest:", generations[-1]['best'], ", evals:", generations[-1]['evals'])
@@ -114,14 +149,10 @@ class MinimumWeightVertexCover:
             if FUN_NUMBER_OF_GENERATIONS(self.graph, generations) <= g:
                 break
 
-        best_ind = tools.selBest(pop, 1)[0]
-        is_best_correct = self.graph.isVertexCover(best_ind)
-        #print("\tBest individual is %s, %s (%s)" % (best_ind, best_ind.fitness.values, "CORRECT!" if is_best_correct else "WRONG!"))
+        #print(f"\tBest individual weights {global_valid_best_obj}")
         return {
             "generations": generations,
-            "best": best_ind.fitness.values[0],
-            "is_best_correct": is_best_correct,
-            "objective": self.graph.getVertexCoverFitness(best_ind)
+            "best_objective": global_valid_best_obj
         }
 
 
@@ -180,25 +211,34 @@ def main():
 
         # print("\tSame obj count: ", graph.same_obj_count)
         # print("\tCurrent obj: ", cur_obj)
-        if graph.same_obj_count >= 100:
+        if graph.same_obj_count >= 40:
             return 0
         
         graph.last_obj = cur_obj
         return len(generations) + 1
+    #def stopping_criteria(graph, generations):
+    #    return 1_000_000
 
-    TEST_ITERATION = os.environ.get("TEST_ITERATION", 3)
+    TEST_ITERATION = os.environ.get("TEST_ITERATION", 1)
     META_PARAMETERS = {
-        "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 150)),
-        "CXPB": float(os.environ.get("CXPB", 0.4)),
-        "MUTPB": float(os.environ.get("MUTPB", 0.25)),
-        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 2)),
+        "POPULATION_SIZE": int(os.environ.get("POPULATION_SIZE", 400)),
+        "CXPB": float(os.environ.get("CXPB", 0.5)),
+        "MUTPB": float(os.environ.get("MUTPB", 0.2)),
+        "K_TOURNAMENT": int(os.environ.get("K_TOURNAMENT", 3)),
         "NUMBER_OF_GENERATIONS": stopping_criteria
     }
 
     from joblib import Parallel, delayed
     def process(graph_raw):
         file_name, graph = graph_raw
-        print("Graph: ", file_name)
+        
+        print("Starting to process", file_name, "...")
+        if graph.n < 0: # 200
+            performanceMetrics = { 'best_objective': None }#MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        else:
+            performanceMetrics = MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+        print("Finished to process", file_name, "- best:", performanceMetrics['best_objective'])
+
         return {
             "fileName": file_name,
             "graph": {
@@ -209,7 +249,7 @@ def main():
             "problemClass": get_problem_class(graph.n),
             "testInstanceName": file_name.split("_")[2],
             "testInstanceVersion": file_name.split("_")[3],
-            "performanceMetrics": MinimumWeightVertexCover(graph).run(META_PARAMETERS)
+            "performanceMetrics": performanceMetrics
         }
     
     # READ GRAPHS
