@@ -1,0 +1,22 @@
+\chapter{Introduction}
+
+\section{Problem}
+
+Given a problem instance $(G, \omega)$, where $G$ is a undirected graph $G(V, E)$ and $\omega: V \to \mathbb{R}^{+}$ a function that associates a positive weight value $\omega(v)$ to each vertex $v \in V$, the Minimum Weight Vertex Cover can formally be defined as follows:
+
+\[ \textbf{minimize} \quad \omega(S) = \sum_{v \in S} \omega(v), \quad S \in V \]
+
+{
+	\centering
+	such that $\forall (v_i, v_j) \in E, v_i \in S \lor v_j \in S$.
+}
+
+Note that the MWVC is a NP-complete problem.
+
+\section{Proposed Solution and Motivation}
+
+This project implements a solution to the MWVC problem using a \emph{Genetic Algorithm (GA) with one-point crossover and k-tournament selection}.
+\par
+The chosen algorithm facilitates parallel computing compared to Tabu Search, as well as allowing to reduce the risk of the local optima stagnation. Also, Branch-and-Bound has limitations concerning the problem size, while Genetic Algorithms are suitable for NP-Hard problems such as MWVC.
+\par
+Regarding the chosen Genetic Algorithm variation, even though it is not immediate to state whether one-point crossover will achieve better results over uniform crossover without prior testing, it has been widely proved that k-tournament selection outperforms roulette wheel in most scenarios \cite{ktournament-vs-wheeler}.

@@ -1,0 +1,91 @@
+\chapter{Genetic Algorithms}
+
+\section{Behaviour and Structure}
+
+Genetic Algorithms (GAs) are a class of evolutionary algorithms inspired by the principles of natural selection. They operate by iteratively evolving a population of potential solutions towards an optimal or near-optimal state. The process unfolds as follows:
+
+\begin{description}
+
+	\item[Initialization] An initial population of candidate solutions is randomly generated.
+
+	\item[Evaluation] Each individual in the population is evaluated based on a predefined fitness function, which quantifies its quality or suitability with respect to the problem at hand.
+
+	\item[Selection] A subset of individuals are selected from the populations. The chosen individuals are selected as parents of the following population. Selection is based on fitness, with fitter individuals having a higher probability of being chosen.
+
+	\item[Crossover] Using crossover, selected parents genetic material are combined to create offspring.
+	
+	\item[Mutation] With a certain probability, random mutations are introduced into the offspring. This is called mutation and it helps to maintain diversity within the population and prevents premature convergence towards suboptimal solutions.
+	
+	\item[Replacement] This newly generated population replaces the old one.
+	
+\end{description}
+
+The cycles of evaluation, selection, crossover, mutation, and replacement are repeated until a halting criteria is satisfied.
+
+\section{k-Tournament Selection}
+
+The selection algorithm for the proposed solution is \emph{k-tournament}.
+This algorithm involves running several "tournaments" among k individuals chosen at random from the population, until the desired amount of population is reached. Each tournament selects the best amongst the k selected individuals.
+
+The tournament size $k$ can be adjusted to balance exploration and exploitation. Smaller k introduces more diversity, while larger k focuses more on exploiting fittest individuals.
+Given a population of $n$ individuals:
+\begin{enumerate}
+  \item[] $k=1:$ \quad selection is random, there is no preference based on fitness
+  \item[] $k=n:$ \quad the fittest individuals are always selected 
+\end{enumerate}
+
+\begin{framed}
+\begin{lstlisting}[caption=k-tournament selection]
+function k-tournament(population, k, n)
+	new_population = []
+	while new_population.size < n
+		selected = []
+		while selected.size < k
+			individual = (*@\textit{random element from population}@*)
+			selected.push(individual)
+		end
+		new_population.push(best(selected))
+	end
+	return new_population
+end
+\end{lstlisting}
+\end{framed}
+
+
+\section{Single-Point Crossover}
+
+The simplest form of crossover is the single-point crossover, where a random crossover point is selected and the genetic material is exchanged between the parents at that point.
+
+\begin{framed}
+\begin{lstlisting}[caption=Single-point crossover]
+function single-point-crossover(parent1, parent2)
+	i = (*@\textit{random integer in [0..n-1]}@*)
+	offspring1 = parent1[0..i] + parent2[i+1..n-1]
+	offspring2 = parent2[0..i] + parent1[i+1..n-1]
+	return offspring1, offspring2
+end
+\end{lstlisting}
+\end{framed}
+
+\section{Bit-Flip Mutation}
+
+Mutation is a genetic operator that introduces random changes in the offspring. The simplest form of mutation is the bit-flip mutation, where a bit has a probability $p$ of being flipped.
+
+\begin{framed}
+\begin{lstlisting}[caption=Bit-flip mutation]
+function bit-flip-mutation(offspring, p)
+	for i in 0..n-1
+		if random() < p
+			offspring[i] = 1 - offspring[i]
+		end
+	end
+	return offspring
+end
+\end{lstlisting}
+\end{framed}
+
+
+
+
+
+
